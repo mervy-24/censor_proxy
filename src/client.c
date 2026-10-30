@@ -1,12 +1,5 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <strings.h>
-#include <unistd.h>
 
-#include <sys/types.h>
-#include <sys/socket.h>
-
-#include <netinet/in.h>
+#include "common.h"
 
 int main() {
 	
@@ -17,7 +10,7 @@ int main() {
 	// Specify an address for socket:
 	struct sockaddr_in server_address;
 	server_address.sin_family = AF_INET; // IPv4
-	server_address.sin_port = htons(9090); // Port 9090
+	server_address.sin_port = htons(DEFAULT_PORT); // Port 9090
 	server_address.sin_addr.s_addr = INADDR_ANY; // 0.0.0.0
 	
 	int connection_status = connect(client_fd, (struct sockaddr *) &server_address, sizeof(server_address));
