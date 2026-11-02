@@ -16,8 +16,6 @@ int main(int argc, char *argv[]) {
 		return EXIT_FAILURE;
 	}
 
-	char server_message [256] = "You have reached the server!";
-
 	// Create the server socket:
 	int listen_fd = socket(AF_INET, SOCK_STREAM, 0);
 	if (listen_fd < 0) {
@@ -55,19 +53,36 @@ int main(int argc, char *argv[]) {
 	int client_fd = accept(listen_fd, NULL, NULL);
 	if (client_fd < 0) {
 		perror("accept");
-		return EXIT_FAILURE;
-	}
-	
-	// Send the message:
-	if (send(client_fd, server_message, sizeof(server_message), 0) < 0) {
-		perror("send");
+		close(listen_fd);
 		return EXIT_FAILURE;
 	}
 
-	// Close the socket:
-	close(client_fd);
-	close(listen_fd);
-	
-	return 0;
+	char buffer[1024];
+	ssize_t n;
+
+	// Echo loop (loop body only runs if n > 0):
+	// n > 0: received bytes; n = 0: client closed connection; n < 0: error.
+	while ((n = recv(client_fd, buffer, sizeof(buffer), 0)) > 0) {
+		ssize_t total = 0;
+		while (total < n) {
+			ssize_t sent = send(client_fd, buffer + total, n - total, 0);
+			if (sent < 0) {
+				perror("send");
+				goto done;
+			}
+			total += sent;
+		}
+	}
+
+	if (n < 0) {
+		perror("recv");
+	}
+
+	// Close the sockets:
+	done:
+		close(client_fd);
+		close(listen_fd);
+		return 0;
+
 }
 

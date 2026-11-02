@@ -34,29 +34,54 @@ int main(int argc, char *argv[]) {
 		return EXIT_FAILURE;
 	}
 
-	
+	// Connect to proxy:	
 	if (connect(client_fd, (struct sockaddr *)&server_address, sizeof(server_address)) < 0) {
 		perror("connect");
 		close(client_fd);
 		return EXIT_FAILURE;
 	}
 
-	// Receive data from the server:
-	char server_response[256];
-	ssize_t n = recv(client_fd, server_response, sizeof(server_response) - 1, 0);
-	if (n < 0) {
-		perror("recv");
-		close(client_fd);
-		return EXIT_FAILURE;
-	}
-	server_response[n] = '\0';
+	char line[1024];
+	char reply[1024];
 
-	// Print out the server's response:
-	printf("The server sent the data: %s\n", server_response);
+	while (fgets(line, sizeof(line), stdin) != NULL) {
+		size_t len = strlen(line);
+
+		// Send the whole line (handle partial sends):
+		size_t sent_total = 0;
+		while (sent_total < len) {
+			ssize_t sent = send(client_fd, line + sent_total, len - sent_total, 0);
+			if (sent < 0) {
+				perror("send");
+				close(client_fd);
+				return EXIT_FAILURE;
+			}
+			sent_total += sent;
+		}
+
+		// Receive the echo (expect exactly len bytes back:
+		size_t recv_total = 0;
+		while (recv_total < len) {
+			ssize_t n = recv(client_fd, reply + recv_total, len - recv_total, 0);
+			if (n < 0) {
+				perror("recv");
+				close(client_fd);
+				return EXIT_FAILURE;
+			}
+			if (n == 0) {
+				fprintf(stderr, "Proxy closed the connection.\n");
+				close(client_fd);
+				return EXIT_FAILURE;
+			}
+			recv_total += n;
+		}
+
+		reply[recv_total] = '\0';
+		printf("Echo: %s", reply);
+	}
 
 	// Close the socket:
 	close(client_fd);
-
 	return 0;
 
 }
