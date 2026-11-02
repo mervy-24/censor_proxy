@@ -44,6 +44,7 @@ int main(int argc, char *argv[]) {
 	char line[1024];
 	char reply[1024];
 
+	// Main echo loop:
 	while (fgets(line, sizeof(line), stdin) != NULL) {
 		size_t len = strlen(line);
 

@@ -50,12 +50,20 @@ int main(int argc, char *argv[]) {
 		return EXIT_FAILURE;
 	}
 
-	int client_fd = accept(listen_fd, NULL, NULL);
+	// Define the client address:
+	struct sockaddr_in client_address;
+	socklen_t client_len = sizeof(client_address);
+	int client_fd = accept(listen_fd, (struct sockaddr *)&client_address, &client_len);
 	if (client_fd < 0) {
 		perror("accept");
 		close(listen_fd);
 		return EXIT_FAILURE;
 	}
+
+	// Convery client IP binary to string:
+	char client_ip[INET_ADDRSTRLEN];
+	inet_ntop(AF_INET, &client_address.sin_addr, client_ip, sizeof(client_ip));
+	int client_port = ntohs(client_address.sin_port);
 
 	char buffer[1024];
 	ssize_t n;
@@ -63,7 +71,14 @@ int main(int argc, char *argv[]) {
 	// Echo loop (loop body only runs if n > 0):
 	// n > 0: received bytes; n = 0: client closed connection; n < 0: error.
 	while ((n = recv(client_fd, buffer, sizeof(buffer), 0)) > 0) {
+		// Print what was received:
+		printf("Received %zd bytes from \'%s:%d:\' ", n, client_ip, client_port);
+		fwrite(buffer, 1, n, stdout);
+		fflush(stdout);
+
 		ssize_t total = 0;
+
+		// Echoing back:
 		while (total < n) {
 			ssize_t sent = send(client_fd, buffer + total, n - total, 0);
 			if (sent < 0) {
@@ -76,6 +91,10 @@ int main(int argc, char *argv[]) {
 
 	if (n < 0) {
 		perror("recv");
+	}
+
+	if (n == 0) {
+		printf("Client from \'%s:%d\' disconnected.\n", client_ip, client_port);
 	}
 
 	// Close the sockets:
