@@ -15,6 +15,5 @@
 
 #define DEFAULT_PORT	9090
 #define BUF_SIZE	1024
-#define MAX_CLIENTS	2
 
 #endif

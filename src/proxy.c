@@ -1,5 +1,8 @@
 
 #include "common.h"
+#include <poll.h>
+
+#define MAX_CLIENTS 64
 
 int main(int argc, char *argv[]) {
 
@@ -41,67 +44,84 @@ int main(int argc, char *argv[]) {
 	// Bind the socket to specified IP and Port:
 	if (bind(listen_fd, (struct sockaddr*) &server_address, sizeof(server_address)) < 0) {
 		perror("bind");
+		close(listen_fd);
 		return EXIT_FAILURE;
 	}
 
 
 	if (listen(listen_fd, 5) < 0) {
 		perror("listen");
-		return EXIT_FAILURE;
-	}
-
-	// Define the client address:
-	struct sockaddr_in client_address;
-	socklen_t client_len = sizeof(client_address);
-	int client_fd = accept(listen_fd, (struct sockaddr *)&client_address, &client_len);
-	if (client_fd < 0) {
-		perror("accept");
 		close(listen_fd);
 		return EXIT_FAILURE;
 	}
 
-	// Convery client IP binary to string:
-	char client_ip[INET_ADDRSTRLEN];
-	inet_ntop(AF_INET, &client_address.sin_addr, client_ip, sizeof(client_ip));
-	int client_port = ntohs(client_address.sin_port);
+	struct pollfd fds[64];
+	char ips[64][INET_ADDRSTRLEN];
+	int ports[64];
+	int nfds = 1;
 
-	char buffer[1024];
-	ssize_t n;
+	fds[0].fd = listen_fd; // Listening socket.
+	fds[0].events = POLLIN; // Client waiting to be accepted.
 
-	// Echo loop (loop body only runs if n > 0):
-	// n > 0: received bytes; n = 0: client closed connection; n < 0: error.
-	while ((n = recv(client_fd, buffer, sizeof(buffer), 0)) > 0) {
-		// Print what was received:
-		printf("Received %zd bytes from \'%s:%d:\' ", n, client_ip, client_port);
-		fwrite(buffer, 1, n, stdout);
-		fflush(stdout);
+	printf("Proxy listening on port %d\n", port);
 
-		ssize_t total = 0;
+	// Sleep until socket is ready:
+	while (1) {
+		int ready = poll(fds, nfds, -1);
+		if (ready < 0) {
+			perror("poll");
+			break;
+		}
 
-		// Echoing back:
-		while (total < n) {
-			ssize_t sent = send(client_fd, buffer + total, n - total, 0);
-			if (sent < 0) {
-				perror("send");
-				goto done;
+		if (fds[0].revents & POLLIN) {
+			// Define the client address:
+			struct sockaddr_in client_address;
+			socklen_t client_len = sizeof(client_address);
+
+			int client_fd = accept(listen_fd, (struct sockaddr *)&client_address, &client_len);
+			if (client_fd < 0) {
+				perror("accept");
+			} else if (nfds >= 64) {
+				fprintf(stderr, "Too many clients, rejecting.\n");
+				close(client_fd);
+			} else {
+				fds[nfds].fd = client_fd;
+				fds[nfds].events = POLLIN;
+
+				inet_ntop(AF_INET, &client_address.sin_addr, ips[nfds], sizeof(ips[nfds]));
+				ports[nfds] = ntohs(client_address.sin_port);
+				printf("Client %s:%d connected.\n", ips[nfds], ports[nfds]);
+
+				nfds++;
 			}
-			total += sent;
+		}
+
+		for (int i = 1; i < nfds; i++) {
+			if (!(fds[i].revents & POLLIN)) { continue; }
+
+			char buffer[1024];
+			ssize_t n = recv(fds[i].fd, buffer, sizeof(buffer), 0);
+
+			if (n > 0) {
+				printf("Received %zd bytes from Client %s:%d: ", n, ips[i], ports[i]);
+				fwrite(buffer, 1, n, stdout);
+				fflush(stdout);
+
+				ssize_t total = 0;
+				while (total < n) {
+					ssize_t sent = send(fds[i].fd, buffer + total, n - total, 0);
+					if (sent < 0) {
+						perror("send");
+						break;
+					}
+					total += sent;
+				}
+			}
 		}
 	}
 
-	if (n < 0) {
-		perror("recv");
-	}
-
-	if (n == 0) {
-		printf("Client from \'%s:%d\' disconnected.\n", client_ip, client_port);
-	}
-
-	// Close the sockets:
-	done:
-		close(client_fd);
-		close(listen_fd);
-		return 0;
+	close(listen_fd);
+	return 0;
 
 }
 
