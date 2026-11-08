@@ -5,6 +5,7 @@
 #define MAX_CLIENTS 64
 #define LINE_MAX_LEN 4096
 
+// Keep calling send until buffer completed, rather than partial:
 static int send_all(int fd, const char *data, size_t len) {
 	size_t total = 0;
 	
@@ -23,7 +24,7 @@ static int send_all(int fd, const char *data, size_t len) {
 
 int main(int argc, char *argv[]) {
 
-	// Error check:
+	// Argument error check:
 	if (argc != 2) {
 		fprintf(stderr, "Usage: %s <port>\n", argv[0]);
 		return EXIT_FAILURE;
@@ -31,13 +32,15 @@ int main(int argc, char *argv[]) {
 
 	// Parse and validate port:
 	int port = atoi(argv[1]);
+
 	if (port <= 0 || port > 65535) {
 		fprintf(stderr, "Invalid port: %s\n", argv[1]);
 		return EXIT_FAILURE;
 	}
 
-	// Create the server socket:
+	// Create the server socket (IPv4, TCP):
 	int listen_fd = socket(AF_INET, SOCK_STREAM, 0);
+
 	if (listen_fd < 0) {
 		perror("socket");
 		return EXIT_FAILURE;
@@ -45,6 +48,7 @@ int main(int argc, char *argv[]) {
 
 	// Allow quick restarts without "Address already in use":
 	int opt = 1;
+
 	if (setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
 			perror("setsockopt");
 			close(listen_fd);
@@ -53,10 +57,10 @@ int main(int argc, char *argv[]) {
 
 	// Define the server address:
 	struct sockaddr_in server_address;
-	memset(&server_address, 0, sizeof(server_address)); // Zeroing the address struct.
-	server_address.sin_family = AF_INET; // IPv4
-	server_address.sin_port = htons(port); // Port from argument.
-	server_address.sin_addr.s_addr = htonl(INADDR_ANY); // 0.0.0.0
+	memset(&server_address, 0, sizeof(server_address)); 	// Zeroing the struct.
+	server_address.sin_family = AF_INET; 			// IPv4
+	server_address.sin_port = htons(port); 			// Port from argument.
+	server_address.sin_addr.s_addr = htonl(INADDR_ANY); 	// 0.0.0.0
 	
 	// Bind the socket to specified IP and Port:
 	if (bind(listen_fd, (struct sockaddr*) &server_address, sizeof(server_address)) < 0) {
@@ -65,70 +69,86 @@ int main(int argc, char *argv[]) {
 		return EXIT_FAILURE;
 	}
 
-
+	// Mark the socket as passive:
 	if (listen(listen_fd, 5) < 0) {
 		perror("listen");
 		close(listen_fd);
 		return EXIT_FAILURE;
 	}
 
+	// Per client stated:
 	struct pollfd fds[64];
 	char ips[64][INET_ADDRSTRLEN];
 	int ports[64];
 	char linebuf[64][LINE_MAX_LEN]; // Bytes received but not yet one full line.
-	size_t linelen[64]; // How many bytes are in linebuf[i].
-	int nfds = 1;
-
-	fds[0].fd = listen_fd; // Listening socket.
-	fds[0].events = POLLIN; // Client waiting to be accepted.
-
+	size_t linelen[64]; 		// How many bytes are in linebuf[i].
+	int nfds = 1;			// Number of slots in use (default 1 = listener.
+	fds[0].fd = listen_fd; 		// Listening socket.
+	fds[0].events = POLLIN; 	// Client waiting to be accepted.
 	printf("Proxy listening on port %d\n", port);
 
-	// Sleep until socket is ready:
+	// Main event loop: sleep until socket is ready:
 	while (1) {
+
+		// Block until at least one socket is ready:
 		int ready = poll(fds, nfds, -1);
+
 		if (ready < 0) {
 			perror("poll");
 			break;
 		}
 
+		// New connection on the listener:
 		if (fds[0].revents & POLLIN) {
-			// Define the client address:
+
+			// Define the client address on the listener:
 			struct sockaddr_in client_address;
 			socklen_t client_len = sizeof(client_address);
-
 			int client_fd = accept(listen_fd, (struct sockaddr *)&client_address, &client_len);
+
 			if (client_fd < 0) {
 				perror("accept");
+
+			// No free slots in nfds:
 			} else if (nfds >= 64) {
 				fprintf(stderr, "Too many clients, rejecting.\n");
 				close(client_fd);
+
 			} else {
+
+				// Store new client in the first free slot (i nfds):
 				fds[nfds].fd = client_fd;
-				fds[nfds].events = POLLIN;
-
-				inet_ntop(AF_INET, &client_address.sin_addr, ips[nfds], sizeof(ips[nfds]));
+				fds[nfds].events = POLLIN; 	// Event: client sends data.
+				inet_ntop(AF_INET, &client_address.sin_addr, ips[nfds], sizeof(ips[nfds])); // Converts binary IP -> readable IP.
 				ports[nfds] = ntohs(client_address.sin_port);
-				linelen[nfds] = 0;
+				linelen[nfds] = 0; 		// Empties line buffer.
 				printf("Client %s:%d connected.\n", ips[nfds], ports[nfds]);
-
-				nfds++;
+				nfds++; 			// Poll watches new slot.
 			}
 		}
 
-		// Echo loop:
+		// Check every client for data:
 		for (int i = 1; i < nfds; i++) {
-			if (!(fds[i].revents & (POLLIN | POLLHUP | POLLERR))) { continue; } // Check dead connection.
 
+			if (!(fds[i].revents & (POLLIN | POLLHUP | POLLERR))) { continue; } // Check dead connection.
 			char buffer[1024];
 			ssize_t n = recv(fds[i].fd, buffer, sizeof(buffer), 0);
 			int drop = 0;
 
+			// n > 0: bytes received; n == 0: client closed; n < 0: error:
 			if (n > 0) {
+
+				// Catches a client that never sends \n:
 				if ((size_t)n > LINE_MAX_LEN - linelen[i]) {
 					fprintf(stderr, "Client %s:%d sent a line that is too long, dropping.\n", ips[i], ports[i]);
 					drop = 1;
+
+				} else if (n == 0) {
+					printf("Client %s:%d disconnected.\n", ips[i], ports[i]);
+					drop = 1;
+				
 				} else {
+
 					// Append new bytes:
 					memcpy(linebuf[i] + linelen[i], buffer, n);
 					linelen[i] += n;
@@ -153,25 +173,21 @@ int main(int argc, char *argv[]) {
 					}
 				}
 		
-
+				// Remove the client if drop == 1:
 				if (drop) {
 					close(fds[i].fd);
-
 					nfds--;
 					fds[i] = fds[nfds];
 					strcpy(ips[i], ips[nfds]);
 					ports[i] = ports[nfds];
-					memcpy(linebuf[i], linebuf[nfds], linelen[nfds]);
+					memcpy(linebuf[i], linebuf[nfds], linelen[nfds]); // Only copy used bytes.
 					linelen[i] = linelen[nfds];
-
 					i--;
 				}
 			}
 		}
 	}
-
 	close(listen_fd);
 	return 0;
-
 }
 
