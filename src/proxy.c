@@ -96,11 +96,13 @@ int main(int argc, char *argv[]) {
 			}
 		}
 
+		// Echo loop:
 		for (int i = 1; i < nfds; i++) {
-			if (!(fds[i].revents & POLLIN)) { continue; }
+			if (!(fds[i].revents & (POLLIN | POLLHUP || POLLERR))) { continue; } // Check dead connection.
 
 			char buffer[1024];
 			ssize_t n = recv(fds[i].fd, buffer, sizeof(buffer), 0);
+			int drop = 0;
 
 			if (n > 0) {
 				printf("Received %zd bytes from Client %s:%d: ", n, ips[i], ports[i]);
@@ -112,10 +114,28 @@ int main(int argc, char *argv[]) {
 					ssize_t sent = send(fds[i].fd, buffer + total, n - total, 0);
 					if (sent < 0) {
 						perror("send");
+						drop = 1;
 						break;
 					}
 					total += sent;
 				}
+			} else if (n == 0) {
+				printf("Client %s:%d disconnected.\n", ips[i], ports[i]);
+				drop = 1;
+			} else {
+				perror("recv");
+				drop = 1;
+			}
+
+			if (drop) {
+				close(fds[i].fd);
+
+				nfds--;
+				fds[i] = fds[nfds];
+				strcpy(ips[i], ips[nfds]);
+				ports[i] = ports[nfds];
+
+				i--;
 			}
 		}
 	}
