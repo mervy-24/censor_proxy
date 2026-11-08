@@ -3,6 +3,23 @@
 #include <poll.h>
 
 #define MAX_CLIENTS 64
+#define LINE_MAX_LEN 4096
+
+static int send_all(int fd, const char *data, size_t len) {
+	size_t total = 0;
+	
+	while (total < len) {
+		ssize_t sent = send(fd, data + total, len - total, 0);
+
+		if (sent < 0) {
+			perror("send");
+			return -1;
+		}
+		total += sent;
+	}
+	return 0;
+}
+
 
 int main(int argc, char *argv[]) {
 
@@ -58,6 +75,8 @@ int main(int argc, char *argv[]) {
 	struct pollfd fds[64];
 	char ips[64][INET_ADDRSTRLEN];
 	int ports[64];
+	char linebuf[64][LINE_MAX_LEN]; // Bytes received but not yet one full line.
+	size_t linelen[64]; // How many bytes are in linebuf[i].
 	int nfds = 1;
 
 	fds[0].fd = listen_fd; // Listening socket.
@@ -90,6 +109,7 @@ int main(int argc, char *argv[]) {
 
 				inet_ntop(AF_INET, &client_address.sin_addr, ips[nfds], sizeof(ips[nfds]));
 				ports[nfds] = ntohs(client_address.sin_port);
+				linelen[nfds] = 0;
 				printf("Client %s:%d connected.\n", ips[nfds], ports[nfds]);
 
 				nfds++;
@@ -98,44 +118,54 @@ int main(int argc, char *argv[]) {
 
 		// Echo loop:
 		for (int i = 1; i < nfds; i++) {
-			if (!(fds[i].revents & (POLLIN | POLLHUP || POLLERR))) { continue; } // Check dead connection.
+			if (!(fds[i].revents & (POLLIN | POLLHUP | POLLERR))) { continue; } // Check dead connection.
 
 			char buffer[1024];
 			ssize_t n = recv(fds[i].fd, buffer, sizeof(buffer), 0);
 			int drop = 0;
 
 			if (n > 0) {
-				printf("Received %zd bytes from Client %s:%d: ", n, ips[i], ports[i]);
-				fwrite(buffer, 1, n, stdout);
-				fflush(stdout);
+				if ((size_t)n > LINE_MAX_LEN - linelen[i]) {
+					fprintf(stderr, "Client %s:%d sent a line that is too long, dropping.\n", ips[i], ports[i]);
+					drop = 1;
+				} else {
+					// Append new bytes:
+					memcpy(linebuf[i] + linelen[i], buffer, n);
+					linelen[i] += n;
 
-				ssize_t total = 0;
-				while (total < n) {
-					ssize_t sent = send(fds[i].fd, buffer + total, n - total, 0);
-					if (sent < 0) {
-						perror("send");
-						drop = 1;
-						break;
+					// Extract every complete line:
+					char *nl;
+
+					while ((nl = memchr(linebuf[i], '\n', linelen[i])) != NULL) {
+						size_t line_len = (nl - linebuf[i]) + 1; // Includes \n
+						printf("Received %zu bytes from Client %s:%d: ", line_len, ips[i], ports[i]);
+						fwrite(linebuf[i], 1, line_len, stdout);
+						fflush(stdout);
+
+						if (send_all(fds[i].fd, linebuf[i], line_len) < 0) {
+							drop = 1;
+							break;
+						}
+						
+						// Shift the leftover bytes to the front:
+						memmove(linebuf[i], linebuf[i] + line_len, linelen[i] - line_len);
+						linelen[i] -= line_len;
 					}
-					total += sent;
 				}
-			} else if (n == 0) {
-				printf("Client %s:%d disconnected.\n", ips[i], ports[i]);
-				drop = 1;
-			} else {
-				perror("recv");
-				drop = 1;
-			}
+		
 
-			if (drop) {
-				close(fds[i].fd);
+				if (drop) {
+					close(fds[i].fd);
 
-				nfds--;
-				fds[i] = fds[nfds];
-				strcpy(ips[i], ips[nfds]);
-				ports[i] = ports[nfds];
+					nfds--;
+					fds[i] = fds[nfds];
+					strcpy(ips[i], ips[nfds]);
+					ports[i] = ports[nfds];
+					memcpy(linebuf[i], linebuf[nfds], linelen[nfds]);
+					linelen[i] = linelen[nfds];
 
-				i--;
+					i--;
+				}
 			}
 		}
 	}
