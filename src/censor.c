@@ -1,8 +1,8 @@
 
-#include "common.h"
-#include "censor.h"
-
+#include <strings.h>
 #include <ctype.h>
+
+#include "common.h"
 
 // Returns the number of words loaded or -1 on failure:
 int wordlist_load(const char *path, wordlist_t *wl) {

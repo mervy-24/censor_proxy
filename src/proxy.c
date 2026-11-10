@@ -1,9 +1,20 @@
 
-#include "common.h"
+#include <errno.h>
+
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 #include <poll.h>
 
+#include "common.h"
+
+#define BUF_SIZE 1024
+#define DEFAULT_PORT 9090
 #define MAX_CLIENTS 64
 #define LINE_MAX_LEN 4096
+
 
 // Keep calling send until buffer completed, rather than partial:
 static int send_all(int fd, const char *data, size_t len) {
@@ -130,23 +141,19 @@ int main(int argc, char *argv[]) {
 		// Check every client for data:
 		for (int i = 1; i < nfds; i++) {
 
-			if (!(fds[i].revents & (POLLIN | POLLHUP | POLLERR))) { continue; } // Check dead connection.
+			if (!(fds[i].revents & (POLLIN | POLLHUP | POLLERR))) continue; // Check dead connection.
 			char buffer[1024];
 			ssize_t n = recv(fds[i].fd, buffer, sizeof(buffer), 0);
 			int drop = 0;
 
 			// n > 0: bytes received; n == 0: client closed; n < 0: error:
 			if (n > 0) {
+				size_t got = (size_t)n;
 
 				// Catches a client that never sends \n:
-				if ((size_t)n > LINE_MAX_LEN - linelen[i]) {
+				if (got > LINE_MAX_LEN - linelen[i]) {
 					fprintf(stderr, "Client %s:%d sent a line that is too long, dropping.\n", ips[i], ports[i]);
 					drop = 1;
-
-				} else if (n == 0) {
-					printf("Client %s:%d disconnected.\n", ips[i], ports[i]);
-					drop = 1;
-				
 				} else {
 
 					// Append new bytes:
@@ -171,19 +178,28 @@ int main(int argc, char *argv[]) {
 						memmove(linebuf[i], linebuf[i] + line_len, linelen[i] - line_len);
 						linelen[i] -= line_len;
 					}
-				}
+
+				}	
+			
+			} else if (n == 0) {
+					printf("Client %s:%d disconnected.\n", ips[i], ports[i]);
+					drop = 1;
+				
+			} else {
+				perror("recv");
+				drop = 1;
+			}
 		
-				// Remove the client if drop == 1:
-				if (drop) {
-					close(fds[i].fd);
-					nfds--;
-					fds[i] = fds[nfds];
-					strcpy(ips[i], ips[nfds]);
-					ports[i] = ports[nfds];
-					memcpy(linebuf[i], linebuf[nfds], linelen[nfds]); // Only copy used bytes.
-					linelen[i] = linelen[nfds];
-					i--;
-				}
+			// Remove the client if drop == 1:
+			if (drop) {
+				close(fds[i].fd);
+				nfds--;
+				fds[i] = fds[nfds];
+				strcpy(ips[i], ips[nfds]);
+				ports[i] = ports[nfds];
+				memcpy(linebuf[i], linebuf[nfds], linelen[nfds]); // Only copy used bytes.
+				linelen[i] = linelen[nfds];
+				i--;
 			}
 		}
 	}
