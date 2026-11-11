@@ -4,6 +4,17 @@
 
 #include "common.h"
 
+// Return positive if element 'a' should come after 'b' when 'a' is shorter:
+static int cmp_len_desc(const void *a, const void *b) {
+	size_t la = strlen(*(char * const *)a);
+	size_t lb = strlen(*(char * const *)b);
+
+	if (la < lb) return 1;	// a is shorter.
+	if (la > lb) return -1;	// a is longer.
+
+	return 0;
+}
+
 // Returns the number of words loaded or -1 on failure:
 int wordlist_load(const char *path, wordlist_t *wl) {
 	// Start from empty state:
@@ -20,9 +31,16 @@ int wordlist_load(const char *path, wordlist_t *wl) {
 
 	// fgets loop on file:
 	while (fgets(line, sizeof(line), f) != NULL) {
-		line[strcspn(line, "\r\n")] = '\0';	// Strip the newline.
-		if (line[0] == '\0') continue;		// Skip blank lines.
+		size_t len = strcspn(line, "\r\n"); 	// Index of the new line.
+		line[len] = '\0';			// Strip the new line.
 		
+		// Walk back from the end while the last character is a whitespace:
+		while (len > 0 && isspace((unsigned char)line[len - 1]))
+			len --;
+		line[len] = '\0'; // Cut the string at the new end.
+
+		if (len == 0) continue; // Skip lines that are empty.
+
 		// Grow the array when full:
 		if (wl->count == cap) {
 			size_t new_cap = cap ? cap * 2 : 16; // Double size and allocate at 16 slots.
@@ -47,6 +65,12 @@ int wordlist_load(const char *path, wordlist_t *wl) {
 		}
 		wl->count++;
 	}
+
+	// Sort longest words first:
+	if (wl->count > 1) {
+		qsort(wl->words, wl->count, sizeof(char *), cmp_len_desc);
+	}
+
 	fclose(f);
 	return (int)wl->count; // Number of words loaded.
 }
@@ -69,6 +93,7 @@ static int is_word_char(char c) {
 
 size_t censor_line(const char *in, size_t in_len, char *out, size_t out_size, const wordlist_t *wl) {
 	(void)wl;	// Unused.
+				//
 	size_t i = 0;	// Read position in input.
 	size_t o = 0;	// Write position in output.
 	
@@ -83,7 +108,7 @@ size_t censor_line(const char *in, size_t in_len, char *out, size_t out_size, co
 		}
 
 		// Start of a word:
-		size_t start = i - start;
+		size_t start = i;
 
 		while (i < in_len && is_word_char(in[i]))
 			i++;
