@@ -40,7 +40,15 @@ static int pick_target(int i, int nfds) {
 	return t;
 }
 
+static const char *BANNER =
+        "  ___  __     __ _____  ____   ____   _____  _____  ____\n"
+        " / _ \\ \\ \\   / /| ____||  _ \\ / ___| | ____|| ____||  _ \\\n"
+        "| | | | \\ \\ / / |  _|  | |_) |\\___ \\ |  _|  |  _|  | |_) |\n"
+        "| |_| |  \\ V /  | |___ |  _ <  ___) || |___ | |___ |  _ <\n"
+        " \\___/    \\_/   |_____||_| \\_\\|____/ |_____||_____||_| \\_\\\n";
+
 int main(int argc, char *argv[]) {
+	printf("%s\n", BANNER);
 
 	// Argument error check:
 	if (argc != 2) {
