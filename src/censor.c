@@ -133,5 +133,5 @@ size_t censor_line(const char *in, size_t in_len, char *out, size_t out_size, co
 			out[o++] = in[i++];
 		}
 	}
-	return 0;
+	return o;
 }

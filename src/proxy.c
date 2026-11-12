@@ -21,7 +21,7 @@ static int send_all(int fd, const char *data, size_t len) {
 	size_t total = 0;
 	
 	while (total < len) {
-		ssize_t sent = send(fd, data + total, len - total, 0);
+		ssize_t sent = send(fd, data + total, len - total, MSG_NOSIGNAL);
 
 		if (sent < 0) {
 			perror("send");
@@ -32,6 +32,13 @@ static int send_all(int fd, const char *data, size_t len) {
 	return 0;
 }
 
+// Next client slots wraps around client i's line:
+static int pick_target(int i, int nfds) {
+	if (nfds <= 2) return i; // Listener + one client.
+	int t = i + 1;
+	if (t >= nfds) t = 1; // Wrap past the last client back to slot 1.
+	return t;
+}
 
 int main(int argc, char *argv[]) {
 
@@ -87,15 +94,26 @@ int main(int argc, char *argv[]) {
 		return EXIT_FAILURE;
 	}
 
+	// Load the wordlist:
+	wordlist_t wl;
+	int loaded = wordlist_load("data/wordlist.txt", &wl);
+
+	if (loaded < 0) {
+		close(listen_fd);
+		return EXIT_FAILURE;
+	}
+	printf("Loaded %d words from data/wordlist,txt\n", loaded);
+
 	// Per client stated:
-	struct pollfd fds[64];
-	char ips[64][INET_ADDRSTRLEN];
-	int ports[64];
-	char linebuf[64][LINE_MAX_LEN]; // Bytes received but not yet one full line.
-	size_t linelen[64]; 		// How many bytes are in linebuf[i].
-	int nfds = 1;			// Number of slots in use (default 1 = listener.
-	fds[0].fd = listen_fd; 		// Listening socket.
-	fds[0].events = POLLIN; 	// Client waiting to be accepted.
+	struct pollfd fds[MAX_CLIENTS + 1];
+	char ips[MAX_CLIENTS + 1][INET_ADDRSTRLEN];
+	int ports[MAX_CLIENTS + 1];
+	char linebuf[MAX_CLIENTS + 1][LINE_MAX_LEN]; 	// Bytes received but not yet one full line.
+	size_t linelen[MAX_CLIENTS + 1]; 		// How many bytes are in linebuf[i].
+	char out[3 * LINE_MAX_LEN];			// Censored output.
+	int nfds = 1;					// Number of slots in use (default 1 = listener.
+	fds[0].fd = listen_fd; 				// Listening socket.
+	fds[0].events = POLLIN; 			// Client waiting to be accepted.
 	printf("Proxy listening on port %d\n", port);
 
 	// Main event loop: sleep until socket is ready:
@@ -121,7 +139,7 @@ int main(int argc, char *argv[]) {
 				perror("accept");
 
 			// No free slots in nfds:
-			} else if (nfds >= 64) {
+			} else if (nfds >= MAX_CLIENTS + 1) {
 				fprintf(stderr, "Too many clients, rejecting.\n");
 				close(client_fd);
 
@@ -164,17 +182,23 @@ int main(int argc, char *argv[]) {
 					char *nl;
 
 					while ((nl = memchr(linebuf[i], '\n', linelen[i])) != NULL) {
-						size_t line_len = (nl - linebuf[i]) + 1; // Includes \n
-						printf("Received %zu bytes from Client %s:%d: ", line_len, ips[i], ports[i]);
-						fwrite(linebuf[i], 1, line_len, stdout);
+						size_t line_len = (nl - linebuf[i]) + 1;
+						
+						// Censor into out:
+						size_t out_len = censor_line(linebuf[i], line_len, out, sizeof(out), &wl);
+						int target = pick_target(i, nfds);
+						printf("REceived %zu bytes from Client %s:%d: ", line_len, ips[i], ports[i]);
+						fwrite(linebuf[i], 1, line_len, stdout); // Original uncensored line.
+						printf("	-> %zu bytes to Client %s:%d:\n", out_len, ips[target], ports[target]);
 						fflush(stdout);
 
-						if (send_all(fds[i].fd, linebuf[i], line_len) < 0) {
+						// Send the censored bytes:
+						if (send_all(fds[target].fd, out, out_len) < 0 && target == i) {
 							drop = 1;
 							break;
 						}
 						
-						// Shift the leftover bytes to the front:
+						// Shift leftover bytes to the front:
 						memmove(linebuf[i], linebuf[i] + line_len, linelen[i] - line_len);
 						linelen[i] -= line_len;
 					}
@@ -203,6 +227,7 @@ int main(int argc, char *argv[]) {
 			}
 		}
 	}
+	wordlist_free(&wl);
 	close(listen_fd);
 	return 0;
 }
