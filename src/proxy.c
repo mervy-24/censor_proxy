@@ -191,7 +191,13 @@ int main(int argc, char *argv[]) {
 						fwrite(linebuf[i], 1, line_len, stdout); // Original uncensored line.
 
 						if (target < 0) {
-							printf(" -> no other client is connected. Message discarded.\n");
+							printf(" -> no other client is connected, notifying sender.\n");
+							const char *notice = "Overseer: no one is listening to you. Your message was not delivered.\n";
+
+							if (send_all(fds[i].fd, notice, strlen(notice)) < 0) {
+								drop = 1;
+								break;
+							}
 						} else {
 							char prefix[64];
 							int plen = snprintf(prefix, sizeof(prefix), "Client from %s:%d: ", ips[i], ports[i]);
