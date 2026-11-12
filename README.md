@@ -2,7 +2,7 @@
 
 ## Description
 A proxy server (called the Overseer) saves users from offensive language!
-When a client connects to the server, all messages are broadcasted, free of language that may offend.
+When a client connects to the server, messages are deliver to **one** other client, free from offensive language.
 
 ## Installation
 1. Clone the repository
