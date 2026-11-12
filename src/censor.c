@@ -92,33 +92,46 @@ static int is_word_char(char c) {
 }
 
 size_t censor_line(const char *in, size_t in_len, char *out, size_t out_size, const wordlist_t *wl) {
-	(void)wl;	// Unused.
-				//
-	size_t i = 0;	// Read position in input.
-	size_t o = 0;	// Write position in output.
-	
-	while(i < in_len) {
-		
-		// Seperator:
-		if (!is_word_char(in[i])) {
+	static const unsigned char block[3] = { 0xE2, 0x96, 0x88 }; // The three UTF-8 bytes of the full block character.
+	size_t i = 0; // Read position in input.
+	size_t o = 0; // Write position in output.
 
-			if(o >= out_size) break; // No room.
-			out[o++] = in[i++];
-			continue;
+	while (i < in_len) {
+		size_t match_len = 0; // 0 = no banned entry.
+				      
+		// Case 1: Only try match at the start of a word:
+		if (i == 0 || !is_word_char(in[i - 1])) {
+
+			for (size_t w = 0; w < wl->count; w++) {
+				const char *entry = wl->words[w];
+				size_t elen = strlen(entry);
+				if (elen == 0 || elen > in_len - i) continue; // Skip empty entries.
+				
+				// Case 2: case-insensitive match of exactly elen bytes:
+				if (strncasecmp(in + i, entry, elen) != 0) continue;
+
+				// Case 3: the byte after the match must be end of input or a non-word character:
+				if (i + elen < in_len && is_word_char(in[i + elen])) continue;
+				match_len = elen;
+				break; // First match wins.
+			}
 		}
 
-		// Start of a word:
-		size_t start = i;
+		if (match_len > 0) {
+			
+			// One block per byte of entry (all-or-nothing):
+			for (size_t k = 0; k < match_len; k++) {
+				if (out_size - o < 3) return o;
+				memcpy(out + o, block, 3);
+				o += 3;
+			}
+			i += match_len; // Skip whole censored span.
+		} else {
 
-		while (i < in_len && is_word_char(in[i]))
-			i++;
-		size_t word_len = i - start; // [start .. i - 1].
-		
-		// Copy word through unchanged.
-		if (word_len > out_size - o) break;
-		memcpy(out + o, in + start, word_len);
-		o += word_len;
+			// No match; copy one byte and move on:
+			if (o >= out_size) return o;
+			out[o++] = in[i++];
+		}
 	}
-	return o;
+	return 0;
 }
-		
