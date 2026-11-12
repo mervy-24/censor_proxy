@@ -34,7 +34,7 @@ static int send_all(int fd, const char *data, size_t len) {
 
 // Next client slots wraps around client i's line:
 static int pick_target(int i, int nfds) {
-	if (nfds <= 2) return i; // Listener + one client.
+	if (nfds <= 2) return -1; // Only one client connected.
 	int t = i + 1;
 	if (t >= nfds) t = 1; // Wrap past the last client back to slot 1.
 	return t;
@@ -187,16 +187,22 @@ int main(int argc, char *argv[]) {
 						// Censor into out:
 						size_t out_len = censor_line(linebuf[i], line_len, out, sizeof(out), &wl);
 						int target = pick_target(i, nfds);
-						printf("REceived %zu bytes from Client %s:%d: ", line_len, ips[i], ports[i]);
+						printf("Received %zu bytes from Client %s:%d: ", line_len, ips[i], ports[i]);
 						fwrite(linebuf[i], 1, line_len, stdout); // Original uncensored line.
-						printf("	-> %zu bytes to Client %s:%d:\n", out_len, ips[target], ports[target]);
-						fflush(stdout);
 
-						// Send the censored bytes:
-						if (send_all(fds[target].fd, out, out_len) < 0 && target == i) {
-							drop = 1;
-							break;
+						if (target < 0) {
+							printf(" -> no other client is connected. Message discarded.\n");
+						} else {
+							char prefix[64];
+							int plen = snprintf(prefix, sizeof(prefix), "Client from %s:%d: ", ips[i], ports[i]);
+							printf(" -> %zu bytes to Client %s:%d:\n", out_len, ips[target], ports[target]);
+
+							// Send the censored bytes:
+							if (send_all(fds[target].fd, prefix, (size_t)plen) == 0) {
+								send_all(fds[target].fd, out, out_len);
+							}
 						}
+						fflush(stdout);
 						
 						// Shift leftover bytes to the front:
 						memmove(linebuf[i], linebuf[i] + line_len, linelen[i] - line_len);
