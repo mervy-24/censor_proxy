@@ -17,6 +17,7 @@ In project root directory:
 ### Step 2: Connecting as a client
 
 In another terminal there are a few ways you can connect interactively.
+
 Netcat:
 `nc 127.0.0.1 9090`
 
