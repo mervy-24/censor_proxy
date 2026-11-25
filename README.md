@@ -4,6 +4,13 @@
 A proxy server (called the Overseer) saves users from offensive language!
 When a client connects to the server, messages are delivered to **one** other client, free from offensive language.
 
+## Demo
+![Two clients chatting through the Overseer, with offensive words censored.](Screenshots/twouser.png)
+
+![Client connection, chats, and disconnection displayed on the Overseer terminal.](Screenshots/overseer.png)
+
+![One client connected to the Overseer, attempting to chat with a non-existent second client.](Screenshots/oneuser_proxy.png)
+
 ## Installation
 1. Clone the repository
 2. In project root type `make`
@@ -17,6 +24,7 @@ In project root directory:
 ### Step 2: Connecting as a client
 
 In another terminal there are a few ways you can connect interactively.
+
 Netcat:
 `nc 127.0.0.1 9090`
 
@@ -26,5 +34,9 @@ Telnet:
 socat:
 `socat - TCP:127.0.0.1:9090`
 
-## Contributing
-Feel free to submit pull requests.
+## Limitations
+
+1. No authorisation and encryption.
+2. Tested on Linux only.
+3. Messages are limited to only two users.
+4. Has not undergone stress testing.
