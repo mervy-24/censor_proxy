@@ -160,6 +160,7 @@ int main(int argc, char *argv[]) {
 				ports[nfds] = ntohs(client_address.sin_port);
 				linelen[nfds] = 0; 		// Empties line buffer.
 				printf("Client %s:%d connected.\n", ips[nfds], ports[nfds]);
+				fds[nfds].revents = 0;
 				nfds++; 			// Poll watches new slot.
 			}
 		}
