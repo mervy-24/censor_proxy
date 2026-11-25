@@ -17,11 +17,11 @@ When a client connects to the server, messages are delivered to **one** other cl
 
 ## Why I built this
 The Overseer is a joke with a point. Over the last several years, offensive or non-politically correct
-language has been a large topic of discussion. Here, with some tongue and cheek, I offer my solution.
+language has been a large topic of discussion. Here, with some tongue in cheek, I offer my solution.
 Instead of censoring coarse language or slurs which you may expect after reading the description,
 all opinion words are blocked. Most real-world censorship works in a similar way. The code is a
-circular-buffer chat relay in C, my commentary is the wordlist. Practically, this was a small project
-for me to learn about socket programming.
+chat relay in C that passes messages around a ring of clients., my commentary is the wordlist.
+Practically, this was a small project for me to learn about socket programming.
 
 ## Installation
 1. Clone the repository
@@ -48,7 +48,7 @@ socat:
 
 ## Limitations
 
-1. No authorisation and encryption.
+1. No authentication or encryption.
 2. Tested on Linux only.
-3. Messages are limited to only two users.
+3. Messages are delivered to only one other client, the next in the ring.
 4. Has not undergone stress testing.
