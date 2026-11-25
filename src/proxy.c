@@ -110,7 +110,7 @@ int main(int argc, char *argv[]) {
 		close(listen_fd);
 		return EXIT_FAILURE;
 	}
-	printf("Loaded %d words from data/wordlist,txt\n", loaded);
+	printf("Loaded %d words from data/wordlist.txt\n", loaded);
 
 	// Per client stated:
 	struct pollfd fds[MAX_CLIENTS + 1];
