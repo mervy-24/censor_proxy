@@ -6,15 +6,12 @@ When a client connects to the server, messages are delivered to **one** other cl
 
 ## Demo
 ![Two clients chatting through the Overseer, with offensive words censored.](Screenshots/twouser.png)
-
 *Left client sends messages to the right client. The right client receives it with the offensive words censored.*
 
 ![Client connection, chats, and disconnection displayed on the Overseer terminal.](Screenshots/overseer.png)
-
 *The Overseer logging connections and the bytes forward between clients.*
 
 ![One client connected to the Overseer, attempting to chat with a non-existent second client.](Screenshots/oneuser_proxy.png)
-
 *If no other client is connected, the Overseer tells the sender their message wasn't delivered.*
 
 ## Why I built this
