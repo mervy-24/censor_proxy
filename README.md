@@ -17,10 +17,10 @@ When a client connects to the server, messages are delivered to **one** other cl
 
 ## Why I built this
 The Overseer is a joke with a point. Over the last several years, offensive or non-politically correct
-language has been a large topic of discussion. Here, I offer my solution with some tongue and cheek.
+language has been a large topic of discussion. Here, with some tongue and cheek, I offer my solution.
 Instead of censoring coarse language or slurs which you may expect after reading the description,
 all opinion words are blocked. Most real-world censorship works in a similar way. The code is a
-circular-buffer chat relay in C; my commentary is the wordlist. Practically, this was a small project
+circular-buffer chat relay in C, my commentary is the wordlist. Practically, this was a small project
 for me to learn about socket programming.
 
 ## Installation
